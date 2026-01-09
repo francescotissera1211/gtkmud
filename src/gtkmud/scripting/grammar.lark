@@ -1,0 +1,108 @@
+// GTK MUD DSL Grammar
+// A simple scripting language for triggers, gags, aliases, and sounds
+
+start: statement*
+
+statement: trigger_stmt
+         | gag_stmt
+         | alias_stmt
+         | sound_trigger_stmt
+         | ambience_stmt
+         | variable_stmt
+
+// Triggers match incoming text and execute actions
+trigger_stmt: "trigger" pattern block
+
+// Gags suppress matching text from display
+gag_stmt: "gag" pattern
+
+// Aliases expand command shortcuts
+alias_stmt: "alias" STRING STRING
+
+// Sound triggers play audio on pattern match (shorthand for trigger + sound)
+sound_trigger_stmt: "sound_trigger" pattern STRING sound_options?
+
+// Ambience control at top level
+ambience_stmt: "ambience" (STRING ambience_options? | "stop")
+
+// Variable assignment at top level
+variable_stmt: "$" NAME "=" expression
+
+// Action block
+block: "{" action* "}"
+
+action: send_action
+      | sound_action
+      | ambience_action
+      | gag_action
+      | highlight_action
+      | var_action
+      | if_action
+
+send_action: "send" expression
+sound_action: "sound" STRING sound_options? -> sound_play
+           | "sound" "stop" STRING? -> sound_stop
+ambience_action: "ambience" STRING ambience_options? -> ambience_play
+               | "ambience" "stop" -> ambience_stop
+gag_action: "gag"
+highlight_action: "highlight" color_spec
+var_action: "$" NAME "=" expression
+if_action: "if" condition block ("else" block)?
+
+// Pattern is either a literal string or regex
+pattern: STRING -> literal_pattern
+       | REGEX -> regex_pattern
+
+// Sound options
+sound_options: sound_option+
+sound_option: "volume" NUMBER -> opt_volume
+            | "loop" (NUMBER | "infinite") -> opt_loop
+            | "priority" NUMBER -> opt_priority
+            | "id" STRING -> opt_id
+
+// Ambience options
+ambience_options: ambience_option+
+ambience_option: "loop" -> opt_amb_loop
+               | "volume" NUMBER -> opt_amb_volume
+               | "fadein" NUMBER -> opt_amb_fadein
+
+// Color specification
+color_spec: COLOR_NAME -> named_color
+          | "#" HEXCOLOR -> hex_color
+
+// Condition for if statements
+condition: "$" NAME comparison_op expression -> var_condition
+         | "match" "(" NUMBER ")" comparison_op expression -> match_condition
+
+comparison_op: "==" -> eq
+             | "!=" -> ne
+             | ">" -> gt
+             | "<" -> lt
+             | ">=" -> ge
+             | "<=" -> le
+
+// Expression (string concatenation and values)
+expression: expr_atom ("+" expr_atom)*
+
+expr_atom: STRING -> string_val
+         | NUMBER -> number_val
+         | "$" NAME -> var_val
+         | "match" "(" NUMBER ")" -> match_val
+
+// Terminals
+NAME: /[a-zA-Z_][a-zA-Z0-9_]*/
+NUMBER: /[0-9]+/
+HEXCOLOR: /[0-9a-fA-F]{6}/
+COLOR_NAME: "red" | "green" | "blue" | "yellow" | "cyan" | "magenta" | "white" | "black" | "bright_red" | "bright_green" | "bright_blue" | "bright_yellow" | "bright_cyan" | "bright_magenta" | "bright_white" | "gray"
+
+// String with escape sequences
+STRING: /"([^"\\]|\\.)*"/
+
+// Regex pattern with optional flags
+REGEX: /\/([^\/\\]|\\.)*\/[i]?/
+
+// Whitespace and comments
+COMMENT: /#[^\n]*/
+%import common.WS
+%ignore WS
+%ignore COMMENT

@@ -1,0 +1,225 @@
+# GTK MUD
+
+An accessible GTK4 MUD (Multi-User Dungeon) client for Linux with full screen reader support, custom scripting, and sound protocol support.
+
+## Features
+
+- **Full Accessibility** - Built with screen reader users in mind using GTK4's accessibility APIs and AT-SPI integration. Works with Orca and other screen readers.
+- **Custom Scripting DSL** - Define triggers, aliases, gags, and sound effects using a simple scripting language.
+- **Sound Protocol Support** - MSP (MUD Sound Protocol), MCMP (Client.Media), and SPHook (Cosmic Rage) support for immersive audio.
+- **Multiple Audio Channels** - Separate channels for sound effects, music, and ambient sounds with independent volume controls.
+- **Profile Management** - Save connection profiles with associated scripts for quick access.
+- **ANSI Color Support** - Full 16/256/true color rendering.
+- **Telnet Protocol** - Standard telnet with MCCP v2 compression and GMCP support.
+
+## Screenshots
+
+*Coming soon*
+
+## Requirements
+
+### System Dependencies
+
+GTK MUD requires the following system packages:
+
+**Gentoo:**
+```bash
+emerge -av x11-libs/gtk+:4 gui-libs/libadwaita media-libs/gstreamer \
+    media-libs/gst-plugins-base media-libs/gst-plugins-good \
+    dev-python/pygobject app-accessibility/at-spi2-core
+```
+
+**Debian/Ubuntu:**
+```bash
+apt install python3-gi python3-gi-cairo gir1.2-gtk-4.0 gir1.2-adw-1 \
+    gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+    libgirepository1.0-dev at-spi2-core
+```
+
+**Fedora:**
+```bash
+dnf install python3-gobject gtk4 libadwaita gstreamer1-plugins-base \
+    gstreamer1-plugins-good at-spi2-core
+```
+
+**Arch Linux:**
+```bash
+pacman -S python-gobject gtk4 libadwaita gstreamer gst-plugins-base \
+    gst-plugins-good at-spi2-core
+```
+
+### Python Dependencies
+
+- Python 3.11+
+- PyGObject >= 3.50.0
+- lark >= 1.1.0
+- aiohttp >= 3.9.0
+- tomli-w >= 1.0.0
+
+## Installation
+
+### From Source
+
+```bash
+# Clone the repository
+git clone https://github.com/harley/gtkmud.git
+cd gtkmud
+
+# Create a virtual environment (optional but recommended)
+python -m venv venv
+source venv/bin/activate
+
+# Install in development mode
+pip install -e .
+
+# Or install normally
+pip install .
+```
+
+### Running
+
+```bash
+# If installed
+gtkmud
+
+# Or run directly from source
+python -m gtkmud
+```
+
+## Usage
+
+### Quick Start
+
+1. Launch GTK MUD
+2. Press the **Connect** button or use `Ctrl+N`
+3. Enter the MUD server address and port
+4. Optionally select a script file and save as a profile
+5. Click **Connect**
+
+### Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+N` | New connection |
+| `Ctrl+,` | Preferences |
+| `Ctrl+Q` | Quit |
+| `Up/Down` | Command history |
+
+### Configuration
+
+GTK MUD follows XDG conventions:
+
+- **Settings:** `~/.config/gtkmud/settings.toml`
+- **Profiles:** `~/.config/gtkmud/profiles.toml`
+- **Scripts:** `~/.local/share/gtkmud/scripts/`
+- **Local Sounds:** `~/.local/share/gtkmud/sounds/`
+- **Cached Sounds:** `~/.cache/gtkmud/sounds/`
+
+## Scripting
+
+GTK MUD includes a custom scripting language for automation. Scripts use the `.mud` extension.
+
+### Example Script
+
+```
+# Movement aliases
+alias "n" "north"
+alias "s" "south"
+alias "e" "east"
+alias "w" "west"
+
+# Sound on tells
+sound_trigger /^\w+ tells you/ "tell.wav" volume 70
+
+# Combat ambience
+trigger "Combat begins" {
+    $combat = "true"
+    ambience "battle.wav" loop volume 50
+}
+
+trigger "Combat ends" {
+    $combat = "false"
+    ambience stop
+}
+
+# Gag spam
+gag /^\[AutoSave\]/
+```
+
+See [docs/scripting.md](docs/scripting.md) for the complete scripting guide.
+
+## Sound Protocols
+
+GTK MUD supports multiple sound protocols:
+
+- **MSP** - Standard MUD Sound Protocol (`!!SOUND()` / `!!MUSIC()`)
+- **MCMP** - GMCP-based Client.Media protocol
+- **SPHook** - Cosmic Rage's custom sound protocol
+
+See [docs/sound-protocols.md](docs/sound-protocols.md) for protocol details.
+
+### Cosmic Rage Support
+
+GTK MUD has built-in support for Cosmic Rage's SPHook sound protocol. To enable sounds:
+
+1. Connect to Cosmic Rage
+2. The client automatically sends `@sp-register mudlet` on login (if using a script with that trigger)
+3. Sounds will be downloaded and cached automatically
+
+## Documentation
+
+- [Scripting Guide](docs/scripting.md) - Complete DSL reference
+- [Sound Protocols](docs/sound-protocols.md) - MSP, MCMP, and SPHook documentation
+
+## Accessibility
+
+GTK MUD is designed for screen reader users:
+
+- All UI elements are properly labeled and keyboard accessible
+- Incoming text is announced via AT-SPI
+- The output view is navigable with arrow keys
+- Sound cues provide additional feedback
+
+Tested with Orca on GNOME.
+
+## Development
+
+### Running Tests
+
+```bash
+# Install dev dependencies
+pip install -e ".[dev]"
+
+# Run tests
+pytest
+
+# With coverage
+pytest --cov=gtkmud
+```
+
+### Project Structure
+
+```
+src/gtkmud/
+├── ui/                 # GTK user interface
+├── net/                # Telnet and protocol handling
+├── parsers/            # ANSI, MSP, SPHook parsers
+├── sound/              # GStreamer audio system
+├── scripting/          # DSL parser and interpreter
+├── config/             # Settings and profiles
+└── accessibility/      # Screen reader support
+```
+
+## License
+
+GTK MUD is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit issues and pull requests.
+
+## Acknowledgments
+
+- Cosmic Rage MUD for the SPHook protocol documentation
+- The GTK and GNOME accessibility teams
+- The MUD community

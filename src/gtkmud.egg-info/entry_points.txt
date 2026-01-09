@@ -1,0 +1,5 @@
+[console_scripts]
+gtkmud = gtkmud.__main__:main
+
+[gui_scripts]
+gtkmud-gui = gtkmud.__main__:main

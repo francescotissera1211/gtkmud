@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gtkmud"
+version = "0.1.0"
+description = "An accessible GTK4 MUD client with scripting support"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.11"
+authors = [
+    {name = "Harley"}
+]
+keywords = ["mud", "gtk", "accessibility", "telnet", "gaming"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: X11 Applications :: GTK",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Games/Entertainment :: Multi-User Dungeons (MUD)",
+]
+
+dependencies = [
+    "PyGObject>=3.50.0",
+    "lark>=1.1.0",
+    "aiohttp>=3.9.0",
+    "tomli-w>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.0.0",
+]
+
+[project.scripts]
+gtkmud = "gtkmud.__main__:main"
+
+[project.gui-scripts]
+gtkmud-gui = "gtkmud.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/harley/gtkmud"
+Repository = "https://github.com/harley/gtkmud"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
