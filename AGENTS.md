@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `src/gtkmud/` contains the application code, organized by domain: `ui/`, `net/`, `parsers/`, `sound/`, `scripting/`, `config/`, `accessibility/`, and `utils/`.
+- `gtkmud/` contains the application code, organized by domain: `ui/`, `net/`, `parsers/`, `sound/`, `scripting/`, `config/`, `accessibility/`, and `utils/`.
 - `tests/` holds pytest-based unit tests (e.g., `tests/test_sphook_parser.py`).
 - `docs/` contains feature documentation (scripting and sound protocols).
 - `scripts/` contains example MUD scripting files (`.mud`).
@@ -10,14 +10,14 @@
 ## Build, Test, and Development Commands
 - `pip install -e .` installs the package in editable mode.
 - `pip install -e ".[dev]"` installs dev extras (pytest, coverage).
-- `PYTHONPATH=src python -m gtkmud` runs the app from source.
-- `PYTHONPATH=src pytest` runs the test suite.
-- `PYTHONPATH=src pytest tests/test_ansi_parser.py` runs a single test file.
-- `PYTHONPATH=src pytest --cov=gtkmud` runs tests with coverage.
+- `python -m gtkmud` runs the app from source.
+- `pytest` runs the test suite.
+- `pytest tests/test_ansi_parser.py` runs a single test file.
+- `pytest --cov=gtkmud` runs tests with coverage.
 
 ## Coding Style & Naming Conventions
 - Python 3.11+ codebase. Keep modules and filenames lowercase with underscores (e.g., `test_sphook_parser.py`).
-- Follow existing patterns in `src/gtkmud/` for class and function naming (PEP 8 style).
+- Follow existing patterns in `gtkmud/` for class and function naming (PEP 8 style).
 - No formatter or linter is configured in this repo; keep changes consistent with surrounding files.
 
 ## Testing Guidelines

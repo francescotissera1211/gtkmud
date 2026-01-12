@@ -50,7 +50,8 @@ Homepage = "https://github.com/harley/gtkmud"
 Repository = "https://github.com/harley/gtkmud"
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["."]
+include = ["gtkmud*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -6,16 +6,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 # Run the application (development)
-PYTHONPATH=src python -m gtkmud
+python -m gtkmud
 
 # Run tests
-PYTHONPATH=src pytest
+pytest
 
 # Run a single test file
-PYTHONPATH=src pytest tests/test_ansi.py
+pytest tests/test_ansi_parser.py
 
 # Run tests with coverage
-PYTHONPATH=src pytest --cov=gtkmud
+pytest --cov=gtkmud
 
 # Install in development mode
 pip install -e ".[dev]"
@@ -78,7 +78,7 @@ alias "n" "north"
 sound_trigger "thunder" "thunder.wav" volume 70
 ```
 
-Grammar is in `src/gtkmud/scripting/grammar.lark`. Parser uses Lark's LALR mode.
+Grammar is in `gtkmud/scripting/grammar.lark`. Parser uses Lark's LALR mode.
 
 **Full documentation**: See `docs/scripting.md`
 

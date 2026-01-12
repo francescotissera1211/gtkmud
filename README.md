@@ -200,7 +200,7 @@ pytest --cov=gtkmud
 ### Project Structure
 
 ```
-src/gtkmud/
+gtkmud/
 ├── ui/                 # GTK user interface
 ├── net/                # Telnet and protocol handling
 ├── parsers/            # ANSI, MSP, SPHook parsers
