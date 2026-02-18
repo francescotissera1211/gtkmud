@@ -2,6 +2,8 @@
 
 import asyncio
 import logging
+import random
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -122,25 +124,142 @@ class SoundManager:
     def _find_sound_file(self, filename: str) -> Optional[Path]:
         """Find a sound file in local directories.
 
+        Supports three levels of fallback:
+        1. Exact path match
+        2. Case-insensitive match (for cross-platform soundpacks)
+        3. Numbered variant random selection (e.g. "theme.ogg" matches
+           "theme1.ogg", "theme2.ogg", etc. and picks one at random)
+
         Args:
             filename: Filename or relative path.
 
         Returns:
             Path to file if found, None otherwise.
         """
-        # Check sounds directory
+        # 1. Exact match
         local_path = self._sounds_dir / filename
         if local_path.exists():
             return local_path
 
-        # Check with common extensions
+        # Try with common extensions appended
         for ext in [".wav", ".ogg", ".mp3", ".flac"]:
             test_path = self._sounds_dir / (filename + ext)
             if test_path.exists():
                 return test_path
 
+        # 2. Case-insensitive match
+        result = self._find_case_insensitive(filename)
+        if result:
+            return result
+
+        # 3. Numbered variant random selection
+        result = self._find_numbered_variant(filename)
+        if result:
+            return result
+
         # Note: Don't scan cache directory here - cached files use hash names
         # and should be looked up via the downloader's get_cache_path method
+        return None
+
+    def _find_case_insensitive(self, filename: str) -> Optional[Path]:
+        """Find a file using case-insensitive matching.
+
+        Walks the path components and matches each directory/file
+        case-insensitively.
+
+        Args:
+            filename: Relative path to find.
+
+        Returns:
+            Path if found, None otherwise.
+        """
+        parts = Path(filename).parts
+        current = self._sounds_dir
+
+        for part in parts:
+            if not current.is_dir():
+                return None
+            part_lower = part.lower()
+            match = None
+            try:
+                for entry in current.iterdir():
+                    if entry.name.lower() == part_lower:
+                        match = entry
+                        break
+            except OSError:
+                return None
+            if match is None:
+                return None
+            current = match
+
+        return current if current.is_file() else None
+
+    def _find_numbered_variant(self, filename: str) -> Optional[Path]:
+        """Find numbered variants of a sound file and pick one randomly.
+
+        When "theme.ogg" is requested but doesn't exist, looks for files
+        like "theme1.ogg", "theme2.ogg", etc. in the same directory.
+        This is a common pattern in MUD soundpacks for random variation.
+
+        The search is case-insensitive to handle mixed-case filenames
+        (e.g. "command.ogg" matching "Command1.ogg").
+
+        Args:
+            filename: Relative path like "miriani/music/theme.ogg".
+
+        Returns:
+            Randomly selected path if variants found, None otherwise.
+        """
+        file_path = Path(filename)
+        stem = file_path.stem
+        suffix = file_path.suffix or ".ogg"
+
+        # Resolve the parent directory (case-insensitive)
+        parent_parts = file_path.parent.parts
+        parent_dir = self._sounds_dir
+        for part in parent_parts:
+            if not parent_dir.is_dir():
+                return None
+            part_lower = part.lower()
+            match = None
+            try:
+                for entry in parent_dir.iterdir():
+                    if entry.is_dir() and entry.name.lower() == part_lower:
+                        match = entry
+                        break
+            except OSError:
+                return None
+            if match is None:
+                return None
+            parent_dir = match
+
+        if not parent_dir.is_dir():
+            return None
+
+        # Look for files matching stem + digits + suffix (case-insensitive)
+        stem_lower = stem.lower()
+        suffix_lower = suffix.lower()
+        pattern = re.compile(
+            rf'^{re.escape(stem_lower)}\d+{re.escape(suffix_lower)}$',
+            re.IGNORECASE,
+        )
+
+        variants = []
+        try:
+            for entry in parent_dir.iterdir():
+                if entry.is_file() and pattern.match(entry.name):
+                    variants.append(entry)
+        except OSError:
+            return None
+
+        if variants:
+            chosen = random.choice(variants)
+            logger.debug(
+                f"Random sound selection: {filename} -> {chosen.name} "
+                f"(from {len(variants)} variants)"
+            )
+            return chosen
+
         return None
 
     def handle_msp_trigger(self, trigger: SoundTrigger):
