@@ -9,6 +9,8 @@ statement: trigger_stmt
          | sound_trigger_stmt
          | ambience_stmt
          | variable_stmt
+         | on_connect_stmt
+         | on_disconnect_stmt
 
 // Triggers match incoming text and execute actions
 trigger_stmt: "trigger" pattern block
@@ -20,7 +22,7 @@ gag_stmt: "gag" pattern
 alias_stmt: "alias" STRING STRING
 
 // Sound triggers play audio on pattern match (shorthand for trigger + sound)
-sound_trigger_stmt: "sound_trigger" pattern STRING sound_options?
+sound_trigger_stmt: "sound_trigger" pattern expression sound_options?
 
 // Ambience control at top level
 ambience_stmt: "ambience" (STRING ambience_options? | "stop")
@@ -28,11 +30,16 @@ ambience_stmt: "ambience" (STRING ambience_options? | "stop")
 // Variable assignment at top level
 variable_stmt: "$" NAME "=" expression
 
+// Connection event hooks
+on_connect_stmt: "on_connect" block
+on_disconnect_stmt: "on_disconnect" block
+
 // Action block
 block: "{" action* "}"
 
 action: send_action
       | sound_action
+      | music_action
       | ambience_action
       | gag_action
       | highlight_action
@@ -40,9 +47,11 @@ action: send_action
       | if_action
 
 send_action: "send" expression
-sound_action: "sound" STRING sound_options? -> sound_play
+sound_action: "sound" expression sound_options? -> sound_play
            | "sound" "stop" STRING? -> sound_stop
-ambience_action: "ambience" STRING ambience_options? -> ambience_play
+music_action: "music" expression music_options? -> music_play
+            | "music" "stop" -> music_stop
+ambience_action: "ambience" expression ambience_options? -> ambience_play
                | "ambience" "stop" -> ambience_stop
 gag_action: "gag"
 highlight_action: "highlight" color_spec
@@ -59,6 +68,12 @@ sound_option: "volume" NUMBER -> opt_volume
             | "loop" (NUMBER | "infinite") -> opt_loop
             | "priority" NUMBER -> opt_priority
             | "id" STRING -> opt_id
+
+// Music options
+music_options: music_option+
+music_option: "volume" NUMBER -> opt_music_volume
+            | "loop" (NUMBER | "infinite") -> opt_music_loop
+            | "continue" -> opt_music_continue
 
 // Ambience options
 ambience_options: ambience_option+

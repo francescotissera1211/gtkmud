@@ -7,7 +7,8 @@ from dataclasses import dataclass
 
 from gtkmud.scripting.parser import (
     Script, Trigger, Gag, Alias, SoundTrigger, Pattern,
-    Action, SendAction, SoundAction, SoundStopAction, AmbienceAction,
+    Action, SendAction, SoundAction, SoundStopAction,
+    MusicAction, MusicStopAction, AmbienceAction,
     GagAction, HighlightAction, VarAction, IfAction,
     Expression, Condition, ComparisonOp,
 )
@@ -23,6 +24,8 @@ class TriggerResult:
     commands_to_send: list[str] = None
     sounds_to_play: list[tuple] = None  # (filename, options)
     sounds_to_stop: list[Optional[str]] = None  # list of IDs to stop, None = stop all
+    music: Optional[tuple] = None  # (filename, options) or None
+    music_stop: bool = False
     ambience: Optional[tuple] = None  # (filename, options) or (None,) for stop
 
     def __post_init__(self):
@@ -58,6 +61,8 @@ class ScriptInterpreter:
         self.on_send: Optional[Callable[[str], None]] = None
         self.on_sound: Optional[Callable[[str, dict], None]] = None
         self.on_sound_stop: Optional[Callable[[Optional[str]], None]] = None  # None = stop all
+        self.on_music: Optional[Callable[[str, dict], None]] = None
+        self.on_music_stop: Optional[Callable[[], None]] = None
         self.on_ambience: Optional[Callable[[Optional[str], dict], None]] = None
 
         # Initialize variables from script
@@ -131,9 +136,17 @@ class ScriptInterpreter:
 
         # Check sound triggers
         for sound_trigger in self._script.sound_triggers:
-            if sound_trigger.pattern.match(line):
+            match = sound_trigger.pattern.match(line)
+            if match:
+                # Evaluate dynamic expression if present
+                if sound_trigger.expression:
+                    self._current_match = match
+                    filename = self._eval_expression(sound_trigger.expression)
+                    self._current_match = None
+                else:
+                    filename = sound_trigger.filename
                 result.sounds_to_play.append(
-                    (sound_trigger.filename, {
+                    (filename, {
                         "volume": sound_trigger.options.volume,
                         "loops": sound_trigger.options.loops,
                         "priority": sound_trigger.options.priority,
@@ -157,6 +170,11 @@ class ScriptInterpreter:
                     self.on_send(cmd)
 
             elif isinstance(action, SoundAction):
+                # Evaluate dynamic expression if present, otherwise use static filename
+                if action.expression:
+                    filename = self._eval_expression(action.expression)
+                else:
+                    filename = action.filename
                 options = {
                     "volume": action.options.volume,
                     "loops": action.options.loops,
@@ -164,28 +182,52 @@ class ScriptInterpreter:
                 }
                 if action.options.id:
                     options["id"] = action.options.id
-                result.sounds_to_play.append((action.filename, options))
+                result.sounds_to_play.append((filename, options))
                 if self.on_sound:
-                    self.on_sound(action.filename, options)
+                    self.on_sound(filename, options)
 
             elif isinstance(action, SoundStopAction):
                 result.sounds_to_stop.append(action.sound_id)
                 if self.on_sound_stop:
                     self.on_sound_stop(action.sound_id)
 
+            elif isinstance(action, MusicAction):
+                if action.expression:
+                    filename = self._eval_expression(action.expression)
+                else:
+                    filename = action.filename
+                opts = {
+                    "volume": action.options.volume,
+                    "loops": action.options.loops,
+                    "continue": action.options.continue_,
+                }
+                result.music = (filename, opts)
+                if self.on_music:
+                    self.on_music(filename, opts)
+
+            elif isinstance(action, MusicStopAction):
+                result.music_stop = True
+                if self.on_music_stop:
+                    self.on_music_stop()
+
             elif isinstance(action, AmbienceAction):
-                if action.filename is None:
+                if action.filename is None and action.expression is None:
                     result.ambience = (None, {})
                     if self.on_ambience:
                         self.on_ambience(None, {})
                 else:
+                    # Evaluate dynamic expression if present
+                    if action.expression:
+                        filename = self._eval_expression(action.expression)
+                    else:
+                        filename = action.filename
                     opts = {
                         "volume": action.options.volume,
                         "fadein": action.options.fadein,
                     }
-                    result.ambience = (action.filename, opts)
+                    result.ambience = (filename, opts)
                     if self.on_ambience:
-                        self.on_ambience(action.filename, opts)
+                        self.on_ambience(filename, opts)
 
             elif isinstance(action, GagAction):
                 result.should_gag = True
@@ -279,6 +321,28 @@ class ScriptInterpreter:
                 return left <= right
 
         return False
+
+    def run_connect(self) -> TriggerResult:
+        """Run on_connect actions.
+
+        Returns:
+            TriggerResult with accumulated actions.
+        """
+        result = TriggerResult()
+        if self._script and self._script.on_connect:
+            self._execute_actions(self._script.on_connect, result)
+        return result
+
+    def run_disconnect(self) -> TriggerResult:
+        """Run on_disconnect actions.
+
+        Returns:
+            TriggerResult with accumulated actions.
+        """
+        result = TriggerResult()
+        if self._script and self._script.on_disconnect:
+            self._execute_actions(self._script.on_disconnect, result)
+        return result
 
     def get_variable(self, name: str) -> str:
         """Get a variable value.

@@ -63,6 +63,14 @@ class SoundOptions:
 
 
 @dataclass
+class MusicOptions:
+    """Options for music playback."""
+    volume: int = 100
+    loops: int = 1
+    continue_: bool = False
+
+
+@dataclass
 class AmbienceOptions:
     """Options for ambience playback."""
     loop: bool = True
@@ -95,7 +103,8 @@ class SendAction:
 @dataclass
 class SoundAction:
     """Play a sound."""
-    filename: str
+    filename: str  # Static filename for simple cases
+    expression: Optional[Expression] = None  # Dynamic expression for concatenation
     options: SoundOptions = field(default_factory=SoundOptions)
 
 
@@ -106,9 +115,24 @@ class SoundStopAction:
 
 
 @dataclass
+class MusicAction:
+    """Play music (single track, replaces previous)."""
+    filename: Optional[str] = None  # None means stop
+    expression: Optional[Expression] = None
+    options: MusicOptions = field(default_factory=MusicOptions)
+
+
+@dataclass
+class MusicStopAction:
+    """Stop music playback."""
+    pass
+
+
+@dataclass
 class AmbienceAction:
     """Control ambience."""
     filename: Optional[str] = None  # None means stop
+    expression: Optional[Expression] = None  # Dynamic expression for concatenation
     options: AmbienceOptions = field(default_factory=AmbienceOptions)
 
 
@@ -139,8 +163,8 @@ class IfAction:
     else_actions: list = field(default_factory=list)
 
 
-Action = Union[SendAction, SoundAction, SoundStopAction, AmbienceAction, GagAction,
-               HighlightAction, VarAction, IfAction]
+Action = Union[SendAction, SoundAction, SoundStopAction, MusicAction, MusicStopAction,
+               AmbienceAction, GagAction, HighlightAction, VarAction, IfAction]
 
 
 # Statement types
@@ -168,7 +192,8 @@ class Alias:
 class SoundTrigger:
     """A sound trigger (shorthand for trigger + sound)."""
     pattern: Pattern
-    filename: str
+    filename: str  # Static filename for simple cases
+    expression: Optional[Expression] = None  # Dynamic expression for concatenation
     options: SoundOptions = field(default_factory=SoundOptions)
 
 
@@ -180,6 +205,8 @@ class Script:
     aliases: list[Alias] = field(default_factory=list)
     sound_triggers: list[SoundTrigger] = field(default_factory=list)
     variables: dict[str, str] = field(default_factory=dict)
+    on_connect: list[Action] = field(default_factory=list)
+    on_disconnect: list[Action] = field(default_factory=list)
 
 
 class DSLTransformer(Transformer):
@@ -206,7 +233,17 @@ class DSLTransformer(Transformer):
                 script.sound_triggers.append(item)
             elif isinstance(item, tuple) and item[0] == "var":
                 script.variables[item[1]] = item[2]
+            elif isinstance(item, tuple) and item[0] == "on_connect":
+                script.on_connect.extend(item[1])
+            elif isinstance(item, tuple) and item[0] == "on_disconnect":
+                script.on_disconnect.extend(item[1])
         return script
+
+    def on_connect_stmt(self, items):
+        return ("on_connect", items[0])
+
+    def on_disconnect_stmt(self, items):
+        return ("on_disconnect", items[0])
 
     # Statements
     def trigger_stmt(self, items):
@@ -223,9 +260,13 @@ class DSLTransformer(Transformer):
 
     def sound_trigger_stmt(self, items):
         pattern = items[0]
-        filename = self._unquote(items[1])
+        expr = items[1]
         options = items[2] if len(items) > 2 else SoundOptions()
-        return SoundTrigger(pattern=pattern, filename=filename, options=options)
+        # If it's a simple string expression, store as static filename
+        if len(expr.parts) == 1 and expr.parts[0][0] == "string":
+            return SoundTrigger(pattern=pattern, filename=expr.parts[0][1], options=options)
+        # Otherwise store expression for runtime evaluation
+        return SoundTrigger(pattern=pattern, filename="", expression=expr, options=options)
 
     def ambience_stmt(self, items):
         if items[0] == "stop":
@@ -265,10 +306,14 @@ class DSLTransformer(Transformer):
         return SendAction(expression=items[0])
 
     def sound_play(self, items):
-        """Handle sound "file" [options] action."""
-        filename = self._unquote(items[0])
+        """Handle sound expression [options] action."""
+        expr = items[0]
         options = items[1] if len(items) > 1 else SoundOptions()
-        return SoundAction(filename=filename, options=options)
+        # If it's a simple string expression, store as static filename
+        if len(expr.parts) == 1 and expr.parts[0][0] == "string":
+            return SoundAction(filename=expr.parts[0][1], options=options)
+        # Otherwise store expression for runtime evaluation
+        return SoundAction(filename="", expression=expr, options=options)
 
     def sound_stop(self, items):
         """Handle sound stop [id] action."""
@@ -281,11 +326,52 @@ class DSLTransformer(Transformer):
         options = items[1] if len(items) > 1 else SoundOptions()
         return SoundAction(filename=filename, options=options)
 
+    def music_play(self, items):
+        """Handle music expression [options] action."""
+        expr = items[0]
+        options = items[1] if len(items) > 1 else MusicOptions()
+        if len(expr.parts) == 1 and expr.parts[0][0] == "string":
+            return MusicAction(filename=expr.parts[0][1], options=options)
+        return MusicAction(filename="", expression=expr, options=options)
+
+    def music_stop(self, items):
+        """Handle music stop action."""
+        return MusicStopAction()
+
+    def music_options(self, items):
+        opts = MusicOptions()
+        for item in items:
+            if item[0] == "volume":
+                opts.volume = item[1]
+            elif item[0] == "loop":
+                opts.loops = item[1]
+            elif item[0] == "continue":
+                opts.continue_ = True
+        return opts
+
+    def opt_music_volume(self, items):
+        return ("volume", int(items[0]))
+
+    def opt_music_loop(self, items):
+        if not items:
+            return ("loop", -1)
+        val = str(items[0])
+        if val == "infinite":
+            return ("loop", -1)
+        return ("loop", int(val))
+
+    def opt_music_continue(self, items):
+        return ("continue", True)
+
     def ambience_play(self, items):
-        """Handle ambience filename [options] action."""
-        filename = self._unquote(items[0])
+        """Handle ambience expression [options] action."""
+        expr = items[0]
         options = items[1] if len(items) > 1 else AmbienceOptions()
-        return AmbienceAction(filename=filename, options=options)
+        # If it's a simple string expression, store as static filename
+        if len(expr.parts) == 1 and expr.parts[0][0] == "string":
+            return AmbienceAction(filename=expr.parts[0][1], options=options)
+        # Otherwise store expression for runtime evaluation
+        return AmbienceAction(filename="", expression=expr, options=options)
 
     def ambience_stop(self, items):
         """Handle ambience stop action."""
