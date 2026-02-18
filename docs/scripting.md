@@ -78,6 +78,21 @@ sound stop "charge1"    # Stop specific sound by ID
 
 The `id` option allows you to later stop a specific sound. Without an explicit ID, sounds are assigned auto-generated IDs.
 
+#### music
+Play background music (single track channel — replaces any current music):
+```
+music "theme.ogg"
+music "battle.ogg" volume 80
+music "boss.ogg" volume 90 loop 3     # Play 3 times
+music "explore.ogg" loop infinite      # Loop forever
+music "calm.ogg" continue              # Don't restart if already playing
+music stop                             # Stop current music
+```
+
+Music plays on a dedicated channel separate from sound effects. Only one
+music track plays at a time — starting a new track replaces the previous one.
+The `continue` option prevents restarting a track that's already playing.
+
 #### ambience
 Control background ambient sounds:
 ```
@@ -166,6 +181,30 @@ sound_trigger "thunder rumbles" "thunder.wav" volume 70
 sound_trigger /^You hit/ "hit.wav" volume 50 priority 80
 ```
 
+## Connection Hooks
+
+Run actions when connecting or disconnecting from the server. These fire on
+the TCP connection itself, before any game text is received.
+
+### on_connect
+```
+on_connect {
+    music "intro/theme.ogg"
+}
+```
+
+### on_disconnect
+```
+on_disconnect {
+    music stop
+    ambience stop
+}
+```
+
+Connection hooks support all the same actions as triggers: `sound`, `music`,
+`ambience`, `send`, and variable assignments. They do not have pattern matching
+since they fire on connection events, not text.
+
 ## Variables
 
 Variables store state between triggers:
@@ -212,16 +251,22 @@ Operators: `==`, `!=`, `<`, `>`, `<=`, `>=`
 # Cosmic Rage Soundpack
 # Load this script when connecting to Cosmic Rage
 
+# Play theme music on connection (before login)
+on_connect {
+    music "music/intro.ogg"
+}
+
+# Stop all audio on disconnect
+on_disconnect {
+    music stop
+    ambience stop
+}
+
 # Movement aliases
 alias "n" "north"
 alias "s" "south"
 alias "e" "east"
 alias "w" "west"
-
-# Welcome music
-trigger /^Welcome to:\s+Cosmic\s+Rage!$/i {
-    sound "music/intro.wav" volume 30 loop infinite
-}
 
 # Register soundpack on login
 trigger "Welcome back to Cosmic Rage!" {
@@ -229,27 +274,29 @@ trigger "Welcome back to Cosmic Rage!" {
 }
 
 # Tell notification
-sound_trigger /^\w+ tells you/ "comms/tell.wav" volume 70
+sound_trigger /^\w+ tells you/ "comms/tell.ogg" volume 70
 
-# Combat ambience
+# Combat music and ambience
 trigger "Combat begins" {
     $combat = "true"
-    ambience "combat/battle_ambient.wav" loop volume 50
+    music "music/battle.ogg" loop infinite volume 60
+    ambience "combat/battle_ambient.ogg" loop volume 50
 }
 
 trigger "Combat ends" {
     $combat = "false"
+    music stop
     ambience stop
 }
 
 # Vehicle charging with sound stop
 trigger "Your vehicle begins charging" {
-    sound "vehicle/charging.wav" id "vehicle_charge" loop infinite volume 40
+    sound "vehicle/charging.ogg" id "vehicle_charge" loop infinite volume 40
 }
 
 trigger "Your vehicle is fully charged" {
     sound stop "vehicle_charge"
-    sound "vehicle/charged.wav"
+    sound "vehicle/charged.ogg"
 }
 
 # Gag spammy messages
@@ -265,3 +312,24 @@ Local sounds are searched in:
 
 Remote sounds (from MSP/SPHook) are cached in:
 - `~/.cache/gtkmud/sounds/`
+
+### Sound File Resolution
+
+GTK MUD uses a three-level fallback when looking for sound files:
+
+1. **Exact match** — Looks for the file at the exact path specified.
+2. **Case-insensitive match** — If exact match fails, searches the directory
+   case-insensitively. This handles soundpacks authored on case-insensitive
+   filesystems (Windows/macOS) being used on Linux.
+3. **Numbered variant selection** — If neither exact nor case-insensitive match
+   is found, looks for files matching the pattern `name` + digits + extension
+   (e.g. `theme1.ogg`, `theme2.ogg`) and picks one at random. This supports
+   the common MUD soundpack pattern of providing multiple variants of a sound
+   for random variation.
+
+For example, if a script plays `"miriani/music/theme.ogg"` and no exact file
+exists, GTK MUD will find `theme1.ogg`, `theme2.ogg`, etc. and randomly select
+one each time the sound is triggered.
+
+The numbered variant search is also case-insensitive, so `"misc/command.ogg"`
+will match `Command1.ogg`, `Command2.ogg`, etc.
