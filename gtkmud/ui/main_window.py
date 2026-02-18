@@ -174,10 +174,10 @@ class MainWindow(Adw.ApplicationWindow):
         self._text_processor.set_gag_checker(self._script_interpreter.check_gag)
 
         # Connect script interpreter callbacks
+        # Only wire on_send callback (fires commands to MUD during execution).
+        # Sound/music/ambience are handled via TriggerResult in _on_server_data
+        # to avoid double-firing (callbacks + result iteration).
         self._script_interpreter.on_send = self._on_script_send
-        self._script_interpreter.on_sound = self._on_script_sound
-        self._script_interpreter.on_sound_stop = self._on_script_sound_stop
-        self._script_interpreter.on_ambience = self._on_script_ambience
 
     def _on_script_send(self, command: str):
         """Handle send action from script."""
@@ -217,6 +217,22 @@ class MainWindow(Adw.ApplicationWindow):
         else:
             # Stop specific sound by ID
             self._sound_manager._sound_channel.stop_by_id(sound_id)
+
+    def _on_script_music(self, filename: str, options: dict):
+        """Handle music action from script."""
+        from gtkmud.parsers.msp import SoundTrigger
+        trigger = SoundTrigger(
+            type="music",
+            filename=filename,
+            volume=options.get("volume", 100),
+            loops=options.get("loops", 1),
+            continue_=options.get("continue", False),
+        )
+        self._sound_manager.handle_msp_trigger(trigger)
+
+    def _on_script_music_stop(self):
+        """Handle music stop action from script."""
+        self._sound_manager._music_channel.stop()
 
     def _on_script_ambience(self, filename, options: dict):
         """Handle ambience action from script."""
@@ -323,12 +339,8 @@ class MainWindow(Adw.ApplicationWindow):
             # Decode as UTF-8 with fallback
             text = data.decode("utf-8", errors="replace")
 
-            # Process through text pipeline (ANSI colors, MSP sounds, gags)
+            # Process through text pipeline (ANSI colors, MSP sounds, top-level gags)
             result = self._text_processor.process(text)
-
-            # Display styled text (if not gagged)
-            if result.spans and not result.gagged:
-                self._output_view.append_spans(result.spans)
 
             # Handle MSP and SPHook sound triggers
             for trigger in result.sound_triggers:
@@ -338,12 +350,18 @@ class MainWindow(Adw.ApplicationWindow):
             for announcement in result.announcements:
                 self._output_view.announce_text(announcement.text)
 
-            # Process script triggers for each line
+            # Process script triggers BEFORE display so trigger gag actions
+            # can suppress lines (e.g. #$#soundpack environment lines).
+            trigger_gagged_lines: set[str] = set()
             if not result.gagged:
                 plain_text = "".join(span.text for span in result.spans)
                 for line in plain_text.split("\n"):
                     if line.strip():
                         trigger_result = self._script_interpreter.process_line(line)
+
+                        # Track lines gagged by trigger actions
+                        if trigger_result.should_gag:
+                            trigger_gagged_lines.add(line.strip())
 
                         # Handle script sounds
                         for filename, options in trigger_result.sounds_to_play:
@@ -353,13 +371,64 @@ class MainWindow(Adw.ApplicationWindow):
                         for sound_id in trigger_result.sounds_to_stop:
                             self._on_script_sound_stop(sound_id)
 
+                        # Handle script music
+                        if trigger_result.music:
+                            filename, options = trigger_result.music
+                            self._on_script_music(filename, options)
+                        if trigger_result.music_stop:
+                            self._on_script_music_stop()
+
                         # Handle script ambience
                         if trigger_result.ambience:
                             filename, options = trigger_result.ambience
                             self._on_script_ambience(filename, options)
 
+            # Display styled text, filtering out trigger-gagged lines
+            if result.spans and not result.gagged:
+                if trigger_gagged_lines:
+                    filtered_spans = self._filter_gagged_spans(
+                        result.spans, trigger_gagged_lines
+                    )
+                    if filtered_spans:
+                        self._output_view.append_spans(filtered_spans)
+                else:
+                    self._output_view.append_spans(result.spans)
+
         except Exception as e:
             logger.error(f"Error processing server data: {e}")
+
+    def _filter_gagged_spans(self, spans, gagged_lines: set):
+        """Filter out trigger-gagged lines from spans.
+
+        Splits each span's text by newlines, removes lines that match
+        the gagged set, and reassembles with the same styling.
+
+        Args:
+            spans: List of TextSpan objects.
+            gagged_lines: Set of stripped line strings to remove.
+
+        Returns:
+            Filtered list of TextSpan objects.
+        """
+        from gtkmud.parsers.ansi import TextSpan
+
+        result_spans = []
+        for span in spans:
+            # Split this span's text into lines (keeping structure)
+            parts = span.text.split("\n")
+            kept_parts = []
+            for part in parts:
+                if part.strip() not in gagged_lines:
+                    kept_parts.append(part)
+
+            new_text = "\n".join(kept_parts)
+            if new_text:
+                result_spans.append(TextSpan(
+                    text=new_text,
+                    style=span.style,
+                ))
+
+        return result_spans
 
     def _handle_sound_trigger(self, trigger):
         """Handle an MSP sound trigger."""
@@ -377,6 +446,17 @@ class MainWindow(Adw.ApplicationWindow):
         self._connect_button.add_css_class("destructive-action")
         self._output_view.append_text(f"Connected to {host}:{port}\n", tags=["system"])
 
+        # Run script on_connect actions (e.g. play theme music)
+        result = self._script_interpreter.run_connect()
+        for filename, options in result.sounds_to_play:
+            self._on_script_sound(filename, options)
+        if result.music:
+            filename, options = result.music
+            self._on_script_music(filename, options)
+        if result.ambience:
+            filename, options = result.ambience
+            self._on_script_ambience(filename, options)
+
     def _on_disconnected(self, reason):
         """Handle disconnection."""
         self._status_bar.set_label("Disconnected")
@@ -389,6 +469,13 @@ class MainWindow(Adw.ApplicationWindow):
             self._output_view.append_text(f"Disconnected: {reason}\n", tags=["system"])
         else:
             self._output_view.append_text("Disconnected from server.\n", tags=["system"])
+
+        # Run script on_disconnect actions (e.g. stop all audio)
+        result = self._script_interpreter.run_disconnect()
+        if result.music_stop:
+            self._on_script_music_stop()
+        for sound_id in result.sounds_to_stop:
+            self._on_script_sound_stop(sound_id)
 
     def _on_gmcp(self, package: str, data: dict):
         """Handle GMCP message from server."""
